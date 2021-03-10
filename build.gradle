@@ -1,0 +1,34 @@
+plugins {
+	id 'org.springframework.boot' version '2.4.3'
+	id 'io.spring.dependency-management' version '1.0.11.RELEASE'
+	id 'java'
+	id "org.sonarqube" version "2.7"
+	id "org.openapi.generator" version "5.0.1"
+	id "org.jruyi.thrift" version "0.3.1"
+	id 'io.franzbecker.gradle-lombok' version '3.1.0'
+}
+
+apply from: 'other.gradle'
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '11'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile(group: 'io.swagger', name: 'swagger-core', version: '1.5.22')
+
+	implementation 'org.springframework.boot:spring-boot-starter'
+	implementation 'org.springframework.data:spring-data-commons'
+	implementation 'io.springfox:springfox-swagger2:2.9.2'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+	implementation 'org.openapitools:jackson-databind-nullable:0.2.1'
+}
+
+test {
+	useJUnitPlatform()
+}

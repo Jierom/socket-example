@@ -1,0 +1,41 @@
+openapi: 3.0.0
+info:
+  title: 飓风运维模块接口
+  description: 飓风运维模块接口, 仅供公司内部使用.
+  contact:
+    email: guanjie.wu@yitu-inc.com
+  version: 1.0
+externalDocs:
+  description: 发送图片等方式参考了cvpf的文档
+  url: http://rtd.yitu-inc.com/docs/cvpf/en/master/conventions.html
+
+servers:
+  - url: http://api.example.com/v1
+
+paths:
+  /greeting:
+    get:
+      tags:
+        - greeting
+      summary: 问候
+      description: 问候
+      operationId: greeting
+      responses:
+        200:
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
+
+components:
+  schemas:
+    CommonResponse:
+      type: object
+      properties:
+        rtn:
+          description: 返回码
+          type: integer
+        message:
+          description: 返回信息
+          type: string

@@ -1,0 +1,11 @@
+{
+  "library": "spring-boot",
+  "dateLibrary": "java11",
+  "hideGenerationTimestamp": true,
+  "modelPackage": "com.example.scaffold.swagger.model",
+  "apiPackage": "com.example.scaffold.swagger.api",
+  "invokerPackage": "com.example.scaffold.fip.swagger",
+  "interfaceOnly": true,
+  "useTags": false,
+  "serializableModel": true
+}

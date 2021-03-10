@@ -1,0 +1,223 @@
+apply plugin: 'java'
+apply plugin: 'io.spring.dependency-management'
+apply plugin: 'jacoco'
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath "org.openapitools:openapi-generator-gradle-plugin:5.0.1"
+
+//        classpath "org.openapitools:openapi-generator-fix:4.0.1.201907182047"
+    }
+}
+
+compileJava {
+    sourceCompatibility = 11
+    targetCompatibility = 11
+}
+
+compileTestJava {
+    sourceCompatibility = 11
+    targetCompatibility = 11
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+ext {
+    springbootVersion = '2.1.4.RELEASE'
+}
+
+dependencyManagement {
+    dependencies {
+        // kafka
+        dependency 'org.springframework.kafka:spring-kafka:2.2.5.RELEASE'
+        // mongodb
+        dependency "org.springframework.boot:spring-boot-starter-data-mongodb:$springbootVersion"
+        // mysql + mybatis
+        dependency 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.0.1'
+        dependency 'org.flywaydb:flyway-core:5.2.4'
+        dependency 'mysql:mysql-connector-java:8.0.15'
+        // redis
+        dependency "org.springframework.boot:spring-boot-starter-data-redis:$springbootVersion"
+        // security
+        dependency "org.springframework.boot:spring-boot-starter-security:$springbootVersion"
+        dependency 'org.springframework.cloud:spring-cloud-starter-oauth2:2.1.2.RELEASE'
+        //springboot web template
+        dependency "org.springframework.boot:spring-boot-starter-thymeleaf:$springbootVersion"
+    }
+}
+
+dependencies {
+    compile "org.springframework.boot:spring-boot-starter-web:$springbootVersion"
+    compile "org.springframework.boot:spring-boot-configuration-processor:$springbootVersion"
+    compile "org.springframework.boot:spring-boot-starter-aop:$springbootVersion"
+    compile "org.springframework.boot:spring-boot-starter-actuator:$springbootVersion"
+//    compile 'io.micrometer:micrometer-registry-prometheus:1.1.4'
+    compile 'com.alibaba:fastjson:1.2.9'
+    compile 'commons-lang:commons-lang:2.4'
+    compileOnly 'io.swagger:swagger-annotations:1.5.21'
+
+    compile 'org.apache.thrift:libthrift:0.9.3'
+    compileOnly 'org.projectlombok:lombok:1.18.6'
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test:$springbootVersion"
+    testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:$springbootVersion"
+    annotationProcessor 'org.projectlombok:lombok:1.18.6'
+}
+
+
+compileThrift {
+    onlyIf {
+        file('thrift').exists()
+    }
+
+    recurse true
+    sourceDir = file('thrift')
+    generator 'java', 'private-members'
+}
+
+task openapiCode {
+    group 'openapi'
+    description 'openapi sourcecode generator'
+    onlyIf {
+        file('openapi').exists()
+    }
+
+    int i = 0
+    fileTree(dir: 'openapi', include: project.name + '*.yaml').each {
+        yamlFile ->
+            i++
+            String taskName = "openapiCodeGenerator" + i
+            String fileName = yamlFile.name
+            String destDir = "$buildDir/openapi-code-v" + i
+            tasks.register("$taskName", org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+                inputSpec = "$rootDir/openapi/$fileName"
+                outputDir = "$destDir"
+                generatorName = "spring"
+                configFile = "openapi/config.json"
+            }
+
+            openapiCode.dependsOn "$taskName"
+            sourceSets.main.java.srcDir "$destDir/src/main/java"
+
+            String config = fileName[0..<fileName.lastIndexOf('.yaml')] + '-client.json'
+            if(file('openapi/' + config).exists()) {
+                String clientTask = "openapiClientGenerator" + i
+                String clientDestDir = "$buildDir/openapi-client-v" + i
+                tasks.register("$clientTask", org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+                    inputSpec = "$rootDir/openapi/$fileName"
+                    outputDir = "$clientDestDir"
+                    generatorName = "java"
+                    configFile = "openapi/" + config
+
+                    systemProperties = [
+                            apis: "false",
+                            models: "",
+                            supportingFiles: ""
+                    ]
+                }
+
+                openapiCode.dependsOn "$clientTask"
+            }
+    }
+}
+
+def runCmd(String cmd) {
+    exec {
+        commandLine 'bash', '-c', cmd
+    }
+}
+
+def installPrism() {
+    String dest = System.getenv("HOME") + "/.gradle/caches/openapi/prism"
+    if (file(dest).exists()) {
+        file(dest).setExecutable(true, false)
+        return
+    }
+
+    println "首次运行，需要下载依赖，大概两分钟，请稍候..."
+    File destDir = file(System.getenv("HOME") + "/.gradle/caches/openapi")
+    if (! destDir.exists()) {
+        destDir.mkdirs()
+    }
+
+    String cmd ='''
+set -eu
+
+UNAME=$(uname)
+if [ "$UNAME" != "Linux" ] && [ "$UNAME" != "Darwin" ] ; then
+  echo "Sorry, OS/Architecture not supported: ${UNAME}/${ARCH}. Download binary from https://github.com/stoplightio/prism/releases"
+  exit 1
+fi
+
+if [ "$UNAME" = "Darwin" ] ; then
+  PLATFORM="macos"
+elif [ "$UNAME" = "Linux" ] ; then
+  PLATFORM="linux"
+fi
+
+URL="https://github.com/stoplightio/prism/releases/latest/download/prism-cli-$PLATFORM"
+
+curl -sL -w %{http_code} -o \
+'''
+    cmd = new StringBuilder(cmd).append(dest).append(' $URL && ')
+    .append(' chmod +x ').append(dest).toString()
+
+    runCmd(cmd)
+}
+
+task mockServer() {
+    group 'openapi'
+    description '''
+Generate openapi mock server.
+Usage:
+    ./gradlew -Pspec=<openapi yaml file> [-Pbase=<base types file>] [-Phost=<your ip address>] [-Pport=<port of mock server>] mockServer
+    参数:
+    spec: Openapi接口定义文件名称，必选。注意: 必须是工程openapi目录下的yaml文件。
+    base: Openapi基础模型定义文件名称。如果没有，不传。注意: 必须是工程openapi目录下的yaml文件。
+    host: mock server的启动IP，默认为 127.0.0.1。
+    port: mock server的监听端口，默认为 4010。
+例如:
+    ./gradlew -Pspec=repo.yaml -Phost=10.10.40.50 mockServer
+    '''
+
+    if(! project.hasProperty("spec")) {
+        return
+    }
+
+    installPrism()
+    println "in mock server"
+    String spec = project.hasProperty("spec") ? spec : project.name + ".yaml"
+    String host = project.hasProperty("host") ? host : "127.0.0.1"
+    String port = project.hasProperty("port") ? port : "4010"
+    String prism = System.getenv("HOME") + "/.gradle/caches/openapi/prism"
+
+    spec = "$rootDir/openapi/" + spec
+
+    String cmd = new StringBuilder(prism)
+    .append(" mock ")
+    .append(spec)
+    .append(" -h ")
+    .append(host)
+    .append(" -p ")
+    .append(port)
+    .toString()
+
+    runCmd(cmd)
+}
+
+compileJava.dependsOn tasks.openapiCode
